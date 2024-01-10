@@ -91,7 +91,16 @@ def circle_walk_lower(robot, motorID):
         time.sleep(2.5)
         publish(robot.client, f'r{id}/com/motor/M0', "pa" + str(1200))
         robot.check_pos([1200, 1800, -1200]) # Loops to check if position for each motor reached
-        
+
+def test(robot):
+    publish(robot.client, f'r{id}/com/motor/M0', "pa" + str(100))
+    time.sleep(1)
+    publish(robot.client, f'r{id}/com/motor/M0', "pa" + str(200))
+    time.sleep(1)
+    publish(robot.client, f'r{id}/com/motor/M0', "pa" + str(300))
+    time.sleep(1)
+    robot.set_pos([0, 0, 0])
+
 
 if __name__ == '__main__':
     client = connect_mqtt(client_id, username, password, broker, port)
@@ -99,14 +108,17 @@ if __name__ == '__main__':
     
     robot = Roombot(id, client)
 
+    robot.subscribe_pos(f"r{id}/resp/motor/M0")
+
     # Indicate id on
     robot.set_leds("cg")
     
     # Stream motor locations
-    robot.stream_pos()
+    # robot.stream_pos()
 
     # Main function
-    circle_walk(robot, num_steps=1)
+    # circle_walk(robot, num_steps=1)
+    test(robot)
 
     # Indicate actions done
     robot.set_leds("cw")

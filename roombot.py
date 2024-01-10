@@ -2,16 +2,24 @@
 from utils import *
 import time
 import numpy as np
+import threading
 
 from paho.mqtt import client as mqtt_client
 
 class Roombot:
-    def __init__(self, id, client):
+    def __init__(self, id, client, timeout):
         self.id = id
         self.motors = ["M0", "M1", "M2"]
         self.pos = []
         self.client = client
-
+        self.start_time = np.zeros((3))
+        self.end_time = np.zeros((3))
+        self.received = np.zeros((3), dtype=int) # bool values
+        self.timeout = timeout #s
+        self.payloads = [""] * 3
+        self.data = []
+        self.state = 0
+        self.interval = self.timeout
 
     def set_acm(self, value):
         publish(self.client, f'r{self.id}/com/acm/X0', "p" + str(value[0]))
@@ -50,6 +58,26 @@ class Roombot:
         self.client.on_message = on_message
 
 
+    def subscribe_pos_M0(self):
+        def on_message(client, userdata, msg):
+            # print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+            self.received[0] = 1
+            self.payloads[0] = msg.payload.decode()
+            
+            self.check_ping(0)
+
+        self.client.subscribe(f"r{self.id}/resp/motor/M0")
+        self.client.on_message = on_message
+
+
+    def subscribe_pos_M1(self):
+        def on_message(client, userdata, msg):
+            print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+
+        self.client.subscribe(f"r{self.id}/resp/motor/M1")
+        self.client.on_message = on_message
+
+
     def check_pos(self, value, margin=3):
         ''' Check if target positions reached
         Params
@@ -67,6 +95,31 @@ class Roombot:
                     print("Waiting for M{} to reach position {} from {}".format(i, value[i], self.pos[i]))
                     publish(self.client, f'r{self.id}/com/motor/M{i}', "pa" + str(value[i]))
                     time.sleep(1)    
+
+
+    def ping(self, motor):
+        self.start_time = round(time.time() * 1000)
+        publish(self.client, f'r{self.id}/com/motor/M{motor}', "pa" + str(0))
+        timer = threading.Timer(self.timeout, self.callback())
+
+    
+    def callback(self):
+        # print(self.id, self.interval, self.state, self.payloads[0])
+        self.data.append([self.interval, self.state, self.payloads[0]])
+        self.interval = self.timeout
+        self.state = 0
+        self.payloads = [""] * 3
+
+
+    def check_ping(self, motor):
+        self.interval = round(time.time() * 1000) - self.start_time
+        if (self.payloads[motor] == "*"):
+            self.state = 1
+        else:
+            self.state = 2 # indicates error msg
+
+        
+
 
 
     def reset_pos(self):
@@ -88,11 +141,11 @@ class Roombot:
         ------
         goal (list): target motor positions
         '''
-        publish(self.client, f'r{self.id}/com/motor/M0', "pa" + str(value[0]))
-        publish(self.client, f'r{self.id}/com/motor/M1', "pa" + str(value[1]))
-        publish(self.client, f'r{self.id}/com/motor/M2', "pa" + str(value[2]))
+        for i in range(len(self.motors)):
+            self.start_time[i] = round(time.time() * 1000) # current milli time
+            publish(self.client, f'r{self.id}/com/motor/{self.motors[i]}', "pa" + str(value[i]))
 
-        self.check_pos(value) # Loops to check if position for each motor reached
+        # self.check_pos(value) # Loops to check if position for each motor reached
 
 
     def set_gains(self, gains):
